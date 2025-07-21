@@ -59,6 +59,10 @@ for _ in range(n):
     product = random.choice(products)
     month = date.month
 
+    # Empêcher tout produit hors de sa saisonnalité
+    if month not in product_seasons[product]:
+        continue  # Passe à la prochaine itération
+
     # Poids dynamiques selon la saison
     if month in product_seasons.get(product, []):
         # Saison haute : plus d'import, un peu plus d'export
