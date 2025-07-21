@@ -35,7 +35,7 @@ random.seed(42)  # Pour la reproductibilité
 
 products = ['Tomate', 'Carotte', 'Banane', 'Pomme', 'Poivron', 'Courgette', 'Ananas', 'Lait', 'Letchi']
 types_movement = ['import', 'export', 'adjustment', 'loss']  # 'return' retiré
-n = 10000  # nombre de lignes
+n = 1000  # nombre de lignes
 
 # Saison de haute disponibilité par produit (mois: 1=janvier, ..., 12=décembre)
 product_seasons = {
@@ -52,10 +52,10 @@ product_seasons = {
 
 # Génération des données
 data = []
-start_date = datetime.today() - timedelta(days=3650)
+start_date = datetime.today() - timedelta(days=365*5) # 5 ans avant 
 
 for _ in range(n):
-    date = start_date + timedelta(days=random.randint(0, 3650))
+    date = start_date + timedelta(days=random.randint(0, 365*5))
     product = random.choice(products)
     month = date.month
 
