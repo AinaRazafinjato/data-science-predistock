@@ -2,6 +2,34 @@ import pandas as pd
 import random
 from datetime import datetime, timedelta
 
+"""
+Génère un jeu de données fictif de mouvements de stock pour différents produits agricoles.
+- Importe les bibliothèques nécessaires : pandas pour la manipulation de données, random pour la génération aléatoire, datetime pour la gestion des dates.
+- Définit les paramètres de génération :
+    - Fixe la graine aléatoire pour la reproductibilité.
+    - Liste les produits simulés.
+    - Liste les types de mouvements de stock (import, export, ajustement, perte).
+    - Définit le nombre de lignes à générer.
+- Définit les saisons de haute disponibilité pour chaque produit (mois concernés).
+- Initialise la liste de données et la date de départ (il y a 10 ans).
+- Pour chaque ligne à générer :
+    - Tire une date aléatoire sur les 10 dernières années.
+    - Sélectionne un produit aléatoirement.
+    - Détermine le mois de la date.
+    - Calcule dynamiquement les poids de probabilité pour chaque type de mouvement selon la saisonnalité du produit.
+    - Normalise les poids pour garantir une somme à 1.
+    - Tire un type de mouvement selon les poids calculés.
+    - Attribue une quantité selon le type de mouvement et la saisonnalité :
+        - Import : quantité positive, plus élevée en saison.
+        - Export : quantité négative, plus élevée en saison.
+        - Ajustement : quantité variable, plus large en saison.
+        - Perte : petite quantité négative.
+    - Ajoute la ligne générée à la liste de données.
+- Crée un DataFrame pandas à partir des données générées.
+- Trie les données par date croissante.
+- Exporte le DataFrame au format CSV sous le nom 'mouvements_stock_fictifs.csv'.
+"""
+
 # Paramètres
 random.seed(42)  # Pour la reproductibilité
 
