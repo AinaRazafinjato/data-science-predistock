@@ -97,6 +97,6 @@ for _ in range(n):
 # Création et export du DataFrame
 df = pd.DataFrame(data, columns=['date', 'product_name', 'quantity', 'type_movement'])
 df = df.sort_values(['date'], ascending=[True])
-df.to_csv('mouvements_stock_fictifs.csv', index=False)
+df.to_csv('../../data/raw/mouvements_stock_fictifs.csv', index=False)
 
 
