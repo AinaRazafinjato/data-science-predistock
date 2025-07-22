@@ -1,0 +1,8 @@
+pandas
+numpy
+matplotlib
+scikit-learn
+skforecast
+lightgbm
+xgboost
+ipykernel
