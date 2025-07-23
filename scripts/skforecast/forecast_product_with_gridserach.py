@@ -18,7 +18,7 @@ LAG_SIZE = 6
 WINDOW_SIZE = 4
 
 # Charger les données
-data = pd.read_csv("../../data/raw/train.csv", delimiter=',', header=0, parse_dates=True, index_col=0)
+data = pd.read_csv("data/raw/mouvements_stock_fictifs.csv", delimiter=',', header=0, parse_dates=True, index_col=0)
 data = data.sort_index()
 data = data.sort_values(by=["item", "store"])
 
@@ -101,7 +101,7 @@ for index, product in enumerate(products):
                     exog=train_set[["year", "month", "quarter"]],
                     param_grid=model["params_grid_search"],
                     metric='mean_squared_error',
-                    steps=TEST_SIZE,
+                    # steps=TEST_SIZE,
                     cv=3,
                     refit=True,
                     return_best=True,
