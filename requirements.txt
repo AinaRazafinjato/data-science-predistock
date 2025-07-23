@@ -6,3 +6,5 @@ skforecast
 lightgbm
 xgboost
 ipykernel
+seaborn
+statsmodels
