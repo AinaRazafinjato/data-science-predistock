@@ -112,23 +112,25 @@ class StockForecaster:
             pass
         return data
     
-    
-    
     # Pretaitement du donnee pour l'entrainement du ou des modeles
-    def preprocess(self):
+    def preprocess(self,data):
         # Filtrer, encoder, ajouter features temporelles, etc.
         """
         Crée un DataFrame avec full_range en index et chaque colonne = produit-store.
         Les dates manquantes sont remplies avec 0.
         """
-        # Convertir en datetime
-        data = self.load_data().copy()
+        
+        # Copy de la data
+        data = data.copy()
         
         # S'assurer que l'index est bien la date
         if self.date_col in data.columns:
             data[self.date_col] = pd.to_datetime(data[self.date_col])
             data = data.set_index(self.date_col)
 
+        # Filtrer par les types de mouvement
+        data = data[data[self.movement_type_col].isin(self.movement_type)]
+        
         # Créer la clé colonne "produit-mouvement_type"
         data['product_mouvement'] = data[self.product_col].astype(str) + '-' + data[self.movement_type_col].astype(str)
 
@@ -141,42 +143,46 @@ class StockForecaster:
         )
 
         # Reindex sur full_range
-        full_range = pd.date_range(start=self.start_date if self.start_date!=None else data.index.min(), 
-                                   end=data.index.max(), 
-                                #    end=datetime.now(), 
-                                   freq=self.freq)
+        full_range = pd.date_range(
+                            start=self.start_date if self.start_date!=None else data.index.min(), 
+                            end=data.index.max(), 
+                            # end=datetime.now(), 
+                            freq="D")
         
         pivot_data = pivot_data.reindex(full_range)
 
         # Remplir les valeurs manquantes avec 0
         pivot_data.fillna(0, inplace=True)
+        
         # Resample du donnée en frequence voulu
-        df = pivot_data.resample('W').sum()
+        df = pivot_data.resample(self.freq).sum()
+        
         # Ajouter des features temporelles
         df["year"]= df.index.year
         df["month"]= df.index.month
         df["quarter"]= df.index.quarter
         
-        return pivot_data
+        return df
     
+    # Faire le gride search pour les modele qui ont des params_grid
     def grid_search(self, data):
-        
         pass 
+    
     # Recuperation du modele a utilisee
     def get_model(self):
         return self.models
         
-
-    # def train(self):
+    def train(self):
+        pass
+        
+    def predict(self, future_data):
+        pass
         
 
-    # def predict(self, future_data):
-        
-
-    # def run_all(self):
-    #     self.preprocess()
-    #     self.train()
-    #     # Tu peux ajouter un save_model() ou predict() ici
+    def run_all(self):
+        data=self.load_data()
+        data_processed=self.preprocess(data)
+        return data_processed
 
 
 if __name__=="__main__":
@@ -185,4 +191,4 @@ if __name__=="__main__":
                     mouvemement_type=[1,2],
                     )
     
-    print(ex.preprocess().head())
+    print(ex.run_all().head())
