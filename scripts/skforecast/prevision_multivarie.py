@@ -64,7 +64,10 @@ class StockForecaster:
                  product_col='product_id', 
                  target_col='quantity', 
                  mouvemement_type=["sale","restock"],
-                 model_name="all"
+                 model_name="all",
+                 horizon=12,
+                 frequency='M',
+                 start_date=None,
                  ):
         """
         path : chemin du fichier du donnée ou objet Django du donnée
@@ -77,10 +80,10 @@ class StockForecaster:
         self.movement_type = mouvemement_type
         self.models = models if model_name=="all" else models[model_name]
         self.best_model = None
-        self.performance={
-                    name: {"rmse": None, "mae": None, "mape": None}
-                    for name in models
-                }
+        self.performance= {name: {"rmse": None, "mae": None, "mape": None}
+                            for name in self.models} if isinstance(self.models, dict) else {model_name: {"rmse": None, "mae": None, "mape": None}}
+                            
+
         
     def load_data(self):
         """
