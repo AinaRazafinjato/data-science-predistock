@@ -19,6 +19,7 @@ from skforecast.model_selection import (
     TimeSeriesFold,
     grid_search_forecaster_multiseries,
 )
+from datetime import datetime
 
 
 # Liste des modèles à comparer
@@ -74,12 +75,14 @@ class StockForecaster:
         """
         self.path=path
         self.data = None
+        self.freq=frequency
+        self.start_date=start_date
         self.date_col = date_col
         self.product_col = product_col
         self.target_col = target_col
         self.movement_type = mouvemement_type
         self.models = models if model_name=="all" else models[model_name]
-        self.best_model = None
+        self.best_model = None if model_name=="all" else self.models["alg"]
         self.performance= {name: {"rmse": None, "mae": None, "mape": None}
                             for name in self.models} if isinstance(self.models, dict) else {model_name: {"rmse": None, "mae": None, "mape": None}}
                             
@@ -91,16 +94,59 @@ class StockForecaster:
         """
         # Charger les données
         if isinstance(self.path, str):
-            data = pd.read_csv(self.path, delimiter=',', header=0, parse_dates=True, index_col=0)
+            data = pd.read_csv(self.path, delimiter=',', header=0, parse_dates=True, index_col=self.date_col)
             data = data.sort_index()
             data = data.sort_values(by=["item", "store"])
+        else:
+            # Si c'est un objet Django, on suppose qu'il a une méthode pour récupérer les données
+            pass
         return data
+    
+    
+    
+    # Pretaitement du donnee pour l'entrainement du ou des modeles
+    def preprocess(self):
+        # Filtrer, encoder, ajouter features temporelles, etc.
+        """
+        Crée un DataFrame avec full_range en index et chaque colonne = produit-store.
+        Les dates manquantes sont remplies avec 0.
+        """
+        # Convertir en datetime
+        data = self.load_data().copy()
+        
+        # S'assurer que l'index est bien la date
+        if self.date_col in data.columns:
+            data[self.date_col] = pd.to_datetime(data[self.date_col])
+            data = data.set_index(self.date_col)
+
+        # Créer la clé colonne "produit-mouvement_type"
+        data['produit_mouvement'] = data[self.product_col].astype(str) + '-' + data[self.movement_type].astype(str)
+
+        # Pivot de la data
+        pivot_data = data.pivot_table(
+            index=self.date_col,
+            columns='produit_store',
+            values=self.target_col,  # <-- à adapter si ta colonne s'appelle différemment
+            aggfunc='sum'
+        )
+
+        # Reindex sur full_range
+        full_range = pd.date_range(start=self.start_date if self.start_date!=None else data.index.max(), end=datetime.now, freq=self.freq)
+        pivot = pivot.reindex(full_range)
+
+        # Remplir les valeurs manquantes avec 0
+        pivot.fillna(0, inplace=True)
+
+        return pivot
+    
+    
+    
+    
+    
     
     # Recuperation du modele a utilisee
     def get_model(self):
-        return self.models    
-    # def preprocess(self):
-    #     # Filtrer, encoder, ajouter features temporelles, etc.
+        return self.models
         
 
     # def train(self):
@@ -116,5 +162,13 @@ class StockForecaster:
 
 
 if __name__=="__main__":
-    ex=StockForecaster(model_name="Ridge")
-    print(ex.get_model())
+    ex=StockForecaster(
+                    model_name="Ridge",
+                    date_col='date', 
+                    product_col='product', 
+                    target_col='sales', 
+                    mouvemement_type=["1","2"],
+                    horizon=12,
+                    frequency='W'
+                    )
+    print(ex.preprocess().head())
