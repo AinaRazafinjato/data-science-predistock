@@ -20,6 +20,7 @@ from skforecast.model_selection import (
     grid_search_forecaster_multiseries,
 )
 from datetime import datetime
+import os
 
 
 # Liste des modèles à comparer
@@ -58,12 +59,19 @@ models = {
     # }
 }
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+file_path = os.path.join(current_dir, "..", "..", "data", "raw", "train copy.csv")
+
+
+
 class StockForecaster:
     
-    def __init__(self, path="../../data/raw/train.csv", 
+    def __init__(self, 
+                 path=file_path, 
                  date_col='date', 
                  product_col='product_id', 
                  target_col='quantity', 
+                 mouvement_type_col='movement_type',
                  mouvemement_type=["sale","restock"],
                  model_name="all",
                  horizon=12,
@@ -80,6 +88,8 @@ class StockForecaster:
         self.date_col = date_col
         self.product_col = product_col
         self.target_col = target_col
+        self.movement_type_col = mouvement_type_col
+        self.horizon = horizon
         self.movement_type = mouvemement_type
         self.models = models if model_name=="all" else models[model_name]
         self.best_model = None if model_name=="all" else self.models["alg"]
@@ -96,7 +106,7 @@ class StockForecaster:
         if isinstance(self.path, str):
             data = pd.read_csv(self.path, delimiter=',', header=0, parse_dates=True, index_col=self.date_col)
             data = data.sort_index()
-            data = data.sort_values(by=["item", "store"])
+            data = data.sort_values(by=[self.product_col, self.movement_type_col])
         else:
             # Si c'est un objet Django, on suppose qu'il a une méthode pour récupérer les données
             pass
@@ -120,30 +130,38 @@ class StockForecaster:
             data = data.set_index(self.date_col)
 
         # Créer la clé colonne "produit-mouvement_type"
-        data['produit_mouvement'] = data[self.product_col].astype(str) + '-' + data[self.movement_type].astype(str)
+        data['product_mouvement'] = data[self.product_col].astype(str) + '-' + data[self.movement_type_col].astype(str)
 
         # Pivot de la data
         pivot_data = data.pivot_table(
             index=self.date_col,
-            columns='produit_store',
+            columns="product_mouvement",
             values=self.target_col,  # <-- à adapter si ta colonne s'appelle différemment
             aggfunc='sum'
         )
 
         # Reindex sur full_range
-        full_range = pd.date_range(start=self.start_date if self.start_date!=None else data.index.max(), end=datetime.now, freq=self.freq)
-        pivot = pivot.reindex(full_range)
+        full_range = pd.date_range(start=self.start_date if self.start_date!=None else data.index.min(), 
+                                   end=data.index.max(), 
+                                #    end=datetime.now(), 
+                                   freq=self.freq)
+        
+        pivot_data = pivot_data.reindex(full_range)
 
         # Remplir les valeurs manquantes avec 0
-        pivot.fillna(0, inplace=True)
-
-        return pivot
+        pivot_data.fillna(0, inplace=True)
+        # Resample du donnée en frequence voulu
+        df = pivot_data.resample('W').sum()
+        # Ajouter des features temporelles
+        df["year"]= df.index.year
+        df["month"]= df.index.month
+        df["quarter"]= df.index.quarter
+        
+        return pivot_data
     
-    
-    
-    
-    
-    
+    def grid_search(self, data):
+        
+        pass 
     # Recuperation du modele a utilisee
     def get_model(self):
         return self.models
@@ -164,11 +182,7 @@ class StockForecaster:
 if __name__=="__main__":
     ex=StockForecaster(
                     model_name="Ridge",
-                    date_col='date', 
-                    product_col='product', 
-                    target_col='sales', 
-                    mouvemement_type=["1","2"],
-                    horizon=12,
-                    frequency='W'
+                    mouvemement_type=[1,2],
                     )
+    
     print(ex.preprocess().head())
