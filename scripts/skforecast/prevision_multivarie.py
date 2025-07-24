@@ -282,6 +282,7 @@ class StockForecaster:
         performance_df = pd.DataFrame(self.performance)
         performance_df = performance_df.T
         performance_df.columns = ['RMSE', 'MAE', 'MAPE']
+        
         # Calcul du score pondéré (plus bas = meilleur)
         performance_df['score_pondéré'] = (
             performance_df['RMSE'] * self.weights['RMSE'] +
@@ -290,7 +291,7 @@ class StockForecaster:
         )
 
         # Tri pour trouver le meilleur modèle
-        best_model_name = performance_df['score_pondéré'].idxmin()
+        self.best_model_name = performance_df['score_pondéré'].idxmin()
             
         # Recuperation du meilleur modèle et de ses meilleurs hyperparamètres
         best_model=models[best_model_name]['alg']
