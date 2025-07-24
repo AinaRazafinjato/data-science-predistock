@@ -26,13 +26,13 @@ import os
 # Liste des modèles à comparer
 global models
 models = {
-    'XGBoost': {
-        "alg": xgb.XGBRegressor(objective='reg:squarederror', verbosity=0),
-        "params_grid_search": {
-            "eta": [0.1, 0.3],
-            "n_estimators": [50, 100]
-        }
-    },
+    # 'XGBoost': {
+    #     "alg": xgb.XGBRegressor(objective='reg:squarederror', verbosity=0),
+    #     "params_grid_search": {
+    #         "eta": [0.1, 0.3],
+    #         "n_estimators": [50, 100]
+    #     }
+    # },
     "RegressionLineaire": {
         "alg": LinearRegression(),
         "params_grid_search": None
@@ -43,13 +43,13 @@ models = {
             "alpha": [0.1, 0.5, 1.0]
         }
     },
-    'LightGBM': {
-        "alg": LGBMRegressor(n_estimators=100, learning_rate=0.2, verbosity=-1),
-        "params_grid_search": {
-            "learning_rate": [0.1, 0.2],
-            "n_estimators": [50, 100]
-        }
-    },
+    # 'LightGBM': {
+    #     "alg": LGBMRegressor(n_estimators=100, learning_rate=0.2, verbosity=-1),
+    #     "params_grid_search": {
+    #         "learning_rate": [0.1, 0.2],
+    #         "n_estimators": [50, 100]
+    #     }
+    # },
     # 'RandomForrest': {
     #     "alg": RandomForestRegressor(random_state=42, criterion="absolute_error"),
     #     "params_grid_search": {
@@ -74,13 +74,13 @@ class StockForecaster:
                  mouvement_type_col='movement_type',
                  mouvemement_type=["sale","restock"],
                  model_name="all",
-                 horizon=12,
-                 frequency='M',
+                 horizon=24,
+                 frequency='W',
                  start_date=None,
                  test_size=0.2,
                  val_size=0.2,
-                 lags=12,
-                 window_size=12,
+                 lags=30,
+                 window_size=4,
                  ):
         """
         path : chemin du fichier du donnée ou objet Django du donnée
@@ -97,11 +97,12 @@ class StockForecaster:
         self.horizon = horizon
         self.test_size = test_size
         self.val_size = val_size
-        self.lags = lags
+        self.lags = 6
+        self.lags_grid = {f"{lag} lags": int(lag) for lag in np.arange(start=1,stop=lags)}
         self.window_size = window_size
         self.movement_type = mouvemement_type
         self.models = models if model_name=="all" else {model_name:models[model_name],}
-        self.best_model = None if model_name=="all" else self.models["alg"]
+        self.best_model = None if model_name=="all" else self.models[model_name]["alg"]
         self.best_params = {name: {} for name in models}
         self.weights = {
                     'RMSE': 0.4,
@@ -194,7 +195,7 @@ class StockForecaster:
         for model_name, model in self.models.items():
             print(f"En cours : {model_name}")
             
-            # Initialisation du modèle
+            # Initialisation du modèle avec le forecaster
             forecaster = ForecasterRecursiveMultiSeries(
                             regressor = model["alg"],
                             lags      = self.lags,
@@ -223,7 +224,7 @@ class StockForecaster:
                             forecaster       = forecaster,
                             series           = train_set.drop(columns=self.exog_col),
                             exog             = train_set[self.exog_col],
-                            # lags_grid        = LAG_SIZE,
+                            lags_grid        = self.lags_grid,
                             param_grid       = model["params_grid_search"],
                             cv               = cv,
                             levels           = levels.tolist(),
@@ -246,15 +247,15 @@ class StockForecaster:
                 # Mise à jour du modèle avec les meilleurs paramètres
                 forecaster.regressor.set_params(**best_params)
 
-            
-            # Entrainnement sur l'ensemble du train_set et val_set 
-            forecaster.fit(
-                        series=train_set.drop(columns=self.exog_col),
-                        store_in_sample_residuals=True,
-                        exog=train_set[self.exog_col],
-                        
-                        )
-                
+            else:
+                # Entrainnement sur l'ensemble du train_set et val_set 
+                forecaster.fit(
+                            series=train_set.drop(columns=self.exog_col),
+                            store_in_sample_residuals=True,
+                            exog=train_set[self.exog_col],
+                            
+                            )
+                    
             # Prediction sur le test set
             predictions = forecaster.predict(
                         steps=test_size,
@@ -270,7 +271,7 @@ class StockForecaster:
                         )
             
             # Calcul des performances
-            metrics_df = self.compute_metrics_per_column(test_set.drop(self.exog_col), predictions)
+            metrics_df = self.compute_metrics_per_column(test_set.drop(columns=self.exog_col), predictions)
             
             # Enregistrement des performances
             self.performance[model_name]["rmse"]=np.mean(metrics_df['RMSE'])
@@ -294,19 +295,12 @@ class StockForecaster:
         self.best_model_name = performance_df['score_pondéré'].idxmin()
             
         # Recuperation du meilleur modèle et de ses meilleurs hyperparamètres
-        best_model=models[best_model_name]['alg']
-        best_params=self.best_parameters[best_model_name]
+        self.best_model=models[self.best_model_name]['alg']
+        # self.best_params=self.best_params[self.best_model_name]
         # Utilisation du meilleur parametre sur la meilleur modele
-        best_model.set_params(**best_params)
-    # Recuperation du modele a utilisee
-    def get_model(self):
-        return self.models
+        self.best_model.set_params(**self.best_params[self.best_model_name])
         
-    def train(self):
-        pass
-        
-    def predict(self, future_data):
-        pass
+        print(performance_df)
     
     # Evaluation des performances du modèle
     def compute_metrics_per_column(self,y_true, y_pred):
@@ -323,13 +317,13 @@ class StockForecaster:
         data=self.load_data()
         data_processed=self.preprocess(data)
         self.grid_search(data_processed)
+        self.find_best_model()
         return data_processed
 
 
 if __name__=="__main__":
     ex=StockForecaster(
-                    model_name="Ridge",
                     mouvemement_type=[1,2],
                     )
     
-    print(ex.run_all().head())
+    ex.run_all()
