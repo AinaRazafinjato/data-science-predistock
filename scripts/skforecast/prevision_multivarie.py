@@ -164,6 +164,9 @@ class StockForecaster:
         
         return df
     
+    def train_val_test_split(self,data):
+        train_set=data.iloc[:-(VAL_SIZE+TEST_SIZE)].copy()
+        test_set=data.iloc[-TEST_SIZE:].copy()
     # Faire le gride search pour les modele qui ont des params_grid
     def grid_search(self, data):
         pass 
