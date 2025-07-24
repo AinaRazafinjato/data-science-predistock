@@ -1,6 +1,7 @@
 import pandas as pd
 import random
 from datetime import datetime, timedelta
+import os
 
 """
 Génère un jeu de données fictif de mouvements de stock pour différents produits agricoles.
@@ -35,7 +36,7 @@ random.seed(42)  # Pour la reproductibilité
 
 products = ['Tomate', 'Carotte', 'Banane', 'Pomme', 'Poivron', 'Courgette', 'Ananas', 'Lait', 'Letchi']
 types_movement = ['import', 'export', 'adjustment', 'loss']  # 'return' retiré
-n = 1000  # nombre de lignes
+n = 10000  # nombre de lignes
 
 # Saison de haute disponibilité par produit (mois: 1=janvier, ..., 12=décembre)
 product_seasons = {
@@ -50,12 +51,16 @@ product_seasons = {
     'Lait': list(range(1, 13)),
 }
 
+# Création du dossier de sortie si besoin
+output_dir = os.path.join(os.path.dirname(__file__), '../../data/raw')
+os.makedirs(output_dir, exist_ok=True)
+
 # Génération des données
 data = []
-start_date = datetime.today() - timedelta(days=365*5) # 5 ans avant 
+start_date = datetime.today() - timedelta(days=365*10) # 10 ans avant 
 
 for _ in range(n):
-    date = start_date + timedelta(days=random.randint(0, 365*5))
+    date = start_date + timedelta(days=random.randint(0, 365*10))
     product = random.choice(products)
     month = date.month
 
@@ -97,6 +102,6 @@ for _ in range(n):
 # Création et export du DataFrame
 df = pd.DataFrame(data, columns=['date', 'product_name', 'quantity', 'type_movement'])
 df = df.sort_values(['date'], ascending=[True])
-df.to_csv('../../data/raw/mouvements_stock_fictifs.csv', index=False)
+df.to_csv(os.path.join(output_dir, 'mouvements_stock_fictifs.csv'), index=False)
 
 
