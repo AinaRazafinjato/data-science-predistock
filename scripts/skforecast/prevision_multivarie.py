@@ -77,6 +77,10 @@ class StockForecaster:
                  horizon=12,
                  frequency='M',
                  start_date=None,
+                 test_size=0.2,
+                 val_size=0.2,
+                 lags=12,
+                 window_size=12,
                  ):
         """
         path : chemin du fichier du donnée ou objet Django du donnée
@@ -89,15 +93,26 @@ class StockForecaster:
         self.product_col = product_col
         self.target_col = target_col
         self.movement_type_col = mouvement_type_col
+        self.exog_col= ["year", "month", "quarter"]
         self.horizon = horizon
+        self.test_size = test_size
+        self.val_size = val_size
+        self.lags = lags
+        self.window_size = window_size
         self.movement_type = mouvemement_type
-        self.models = models if model_name=="all" else models[model_name]
+        self.models = models if model_name=="all" else {model_name:models[model_name],}
         self.best_model = None if model_name=="all" else self.models["alg"]
+        self.best_params = {name: {} for name in models}
+        self.weights = {
+                    'RMSE': 0.4,
+                    'MAE': 0.3,
+                    'MAPE': 0.3
+                }
         self.performance= {name: {"rmse": None, "mae": None, "mape": None}
                             for name in self.models} if isinstance(self.models, dict) else {model_name: {"rmse": None, "mae": None, "mape": None}}
                             
 
-        
+    # Chargement des données à partir d'un fichier CSV ou d'une base de données
     def load_data(self):
         """
         Charger les données à partir d'un fichier CSV ou base de donnée.
@@ -143,13 +158,13 @@ class StockForecaster:
         )
 
         # Reindex sur full_range
-        full_range = pd.date_range(
+        full_range_date = pd.date_range(
                             start=self.start_date if self.start_date!=None else data.index.min(), 
                             end=data.index.max(), 
                             # end=datetime.now(), 
                             freq="D")
         
-        pivot_data = pivot_data.reindex(full_range)
+        pivot_data = pivot_data.reindex(full_range_date)
 
         # Remplir les valeurs manquantes avec 0
         pivot_data.fillna(0, inplace=True)
@@ -164,13 +179,124 @@ class StockForecaster:
         
         return df
     
-    def train_val_test_split(self,data):
-        train_set=data.iloc[:-(VAL_SIZE+TEST_SIZE)].copy()
-        test_set=data.iloc[-TEST_SIZE:].copy()
-    # Faire le gride search pour les modele qui ont des params_grid
-    def grid_search(self, data):
-        pass 
+    # Separation de données en train, test
+    def train_test_split(self,data):
+        test_size=int(len(data)*self.test_size)
+        val_size=int(len(data)*self.val_size)
+        train_set_with_exog=data.iloc[:-test_size]
+        test_set_with_exog=data.iloc[-test_size:]
+        
+        return train_set_with_exog, test_set_with_exog,val_size,test_size
     
+    # Faire le grid search pour les modele qui ont des params_grid
+    def grid_search(self,data):
+        train_set, test_set, val_size,test_size = self.train_test_split(data)
+        for model_name, model in self.models.items():
+            print(f"En cours : {model_name}")
+            
+            # Initialisation du modèle
+            forecaster = ForecasterRecursiveMultiSeries(
+                            regressor = model["alg"],
+                            lags      = self.lags,
+                            encoding  = 'ordinal',
+                            window_features=RollingFeatures(stats=['mean'], window_sizes=self.window_size),
+                            transformer_series=StandardScaler(),
+                            transformer_exog=StandardScaler(),
+                        )
+            
+            # Si le modele possede un paramètre de grid search, on l'utilise, sinon on l'entraîne directement
+            if model["params_grid_search"] is not None:
+                
+                # Grid Search
+                levels = train_set.drop(columns=self.exog_col).columns
+                exog=self.exog_col
+                
+                # Cross-validation
+                cv = TimeSeriesFold(
+                        steps              = 2,
+                        initial_train_size = len(train_set)-val_size,
+                        refit              = False
+                    )
+                
+                # Initialisation du grid search
+                grid_search = grid_search_forecaster_multiseries(
+                            forecaster       = forecaster,
+                            series           = train_set.drop(columns=self.exog_col),
+                            exog             = train_set[self.exog_col],
+                            # lags_grid        = LAG_SIZE,
+                            param_grid       = model["params_grid_search"],
+                            cv               = cv,
+                            levels           = levels.tolist(),
+                            metric           = 'mean_absolute_error',
+                            aggregate_metric = 'weighted_average' ,
+                            
+                        )
+                
+                # La ligne avec la meilleure combinaison d'hyperparamètres
+                best_model_info = grid_search.iloc[0]  
+
+                # Pour extraire seulement les paramètres
+                best_params = best_model_info['params']
+                
+                # Enregistrement du meilleur params 
+                self.best_params[model_name] = best_params
+                
+                print(f"Meilleurs paramètres pour {model_name}: {best_params}")
+                
+                # Mise à jour du modèle avec les meilleurs paramètres
+                forecaster.regressor.set_params(**best_params)
+
+            
+            # Entrainnement sur l'ensemble du train_set et val_set 
+            forecaster.fit(
+                        series=train_set.drop(columns=self.exog_col),
+                        store_in_sample_residuals=True,
+                        exog=train_set[self.exog_col],
+                        
+                        )
+                
+            # Prediction sur le test set
+            predictions = forecaster.predict(
+                        steps=test_size,
+                        exog=test_set[self.exog_col],
+                    )
+            
+            predictions.index.name = 'date'
+            predictions=predictions.pivot_table(
+                        index="date",
+                        columns='level',
+                        values='pred',
+                        aggfunc='sum'
+                        )
+            
+            # Calcul des performances
+            metrics_df = self.compute_metrics_per_column(test_set.drop(self.exog_col), predictions)
+            
+            # Enregistrement des performances
+            self.performance[model_name]["rmse"]=np.mean(metrics_df['RMSE'])
+            self.performance[model_name]["mae"]=np.mean(metrics_df['MAE'])
+            self.performance[model_name]["mape"]=np.mean(metrics_df['MAPE'])
+    
+    # Recherche du meilleur modele
+    def find_best_model(self):
+        performance_df = pd.DataFrame(self.performance)
+        performance_df = performance_df.T
+        performance_df.columns = ['RMSE', 'MAE', 'MAPE']
+        # Calcul du score pondéré (plus bas = meilleur)
+        performance_df['score_pondéré'] = (
+            performance_df['RMSE'] * self.weights['RMSE'] +
+            performance_df['MAE'] * self.weights['MAE'] +
+            performance_df['MAPE'] * self.weights['MAPE']
+        )
+
+        # Tri pour trouver le meilleur modèle
+        best_model_name = performance_df['score_pondéré'].idxmin()
+            
+        # Recuperation du meilleur modèle et de ses meilleurs hyperparamètres
+        best_model=models[best_model_name]['alg']
+        best_params=self.best_parameters[best_model_name]
+        # Utilisation du meilleur parametre sur la meilleur modele
+        best_model.set_params(**best_params)
     # Recuperation du modele a utilisee
     def get_model(self):
         return self.models
@@ -180,11 +306,22 @@ class StockForecaster:
         
     def predict(self, future_data):
         pass
-        
-
+    
+    # Evaluation des performances du modèle
+    def compute_metrics_per_column(self,y_true, y_pred):
+        metrics = {}
+        for col in y_true.columns:
+            rmse = np.sqrt(mean_squared_error(y_true[col], y_pred[col]))
+            mae = mean_absolute_error(y_true[col], y_pred[col])
+            mape = mean_absolute_percentage_error(y_true[col], y_pred[col]) * 100
+            metrics[col] = {'RMSE': rmse, 'MAE': mae, 'MAPE': mape}
+        return pd.DataFrame(metrics).T  # transpose for readability
+     
+    # Exécution de l'ensemble du processus
     def run_all(self):
         data=self.load_data()
         data_processed=self.preprocess(data)
+        self.grid_search(data_processed)
         return data_processed
 
 
