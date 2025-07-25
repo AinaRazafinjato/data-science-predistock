@@ -1,0 +1,15 @@
+# Prediction of all products quantity (import/export)
+
+Situation	                        Modèle recommandé
+Prédire quantité au fil du temps	Prophet, ARIMA
+Tester modèle simple	            Ridge Regression (Done)
+Relations non-linéaires complexes	SVR, Random Forest
+Beaucoup de données	                Random Forest, Boosting
+
+# Ma recommandation :
+Commence avec Prophet (pour chaque produit individuellement), puis compare avec Ridge Regression et Random Forest.
+
+# Exemple de workflow
+1. Prépare les données (un fichier par produit : date, quantité).
+2. Teste Prophet pour chaque produit.
+3. Compare les résultats (erreur de prédiction) avec Ridge ou Random Forest.

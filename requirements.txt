@@ -5,6 +5,10 @@ scikit-learn
 skforecast
 lightgbm
 xgboost
+jupyter
+ipywidgets
+plotly
 ipykernel
 seaborn
 statsmodels
+prophet
