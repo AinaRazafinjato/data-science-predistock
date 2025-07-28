@@ -25,14 +25,24 @@ import os
 
 # Liste des modèles à comparer
 global models
-models = {
-    # 'XGBoost': {
-    #     "alg": xgb.XGBRegressor(objective='reg:squarederror', verbosity=0),
-    #     "params_grid_search": {
-    #         "eta": [0.1, 0.3],
-    #         "n_estimators": [50, 100]
-    #     }
-    # },
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+file_path = os.path.join(current_dir, "..", "..", "data", "raw", "train copy.csv")
+
+
+
+class StockForecaster:
+    DEBUG=True
+    # DEBUG = True  # Pour activer le mode debug, sinon False
+    # Dictionnaire des modèles avec leurs paramètres
+    models = {
+    'XGBoost': {
+        "alg": xgb.XGBRegressor(objective='reg:squarederror', verbosity=0),
+        "params_grid_search": {
+            "eta": [0.1, 0.3],
+            "n_estimators": [50, 100]
+        }
+    },
     "RegressionLineaire": {
         "alg": LinearRegression(),
         "params_grid_search": None
@@ -43,13 +53,13 @@ models = {
             "alpha": [0.1, 0.5, 1.0]
         }
     },
-    # 'LightGBM': {
-    #     "alg": LGBMRegressor(n_estimators=100, learning_rate=0.2, verbosity=-1),
-    #     "params_grid_search": {
-    #         "learning_rate": [0.1, 0.2],
-    #         "n_estimators": [50, 100]
-    #     }
-    # },
+    'LightGBM': {
+        "alg": LGBMRegressor(n_estimators=100, learning_rate=0.2, verbosity=-1),
+        "params_grid_search": {
+            "learning_rate": [0.1, 0.2],
+            "n_estimators": [50, 100]
+        }
+    },
     # 'RandomForrest': {
     #     "alg": RandomForestRegressor(random_state=42, criterion="absolute_error"),
     #     "params_grid_search": {
@@ -58,14 +68,7 @@ models = {
     #     }
     # }
 }
-
-current_dir = os.path.dirname(os.path.abspath(__file__))
-file_path = os.path.join(current_dir, "..", "..", "data", "raw", "train copy.csv")
-
-
-
-class StockForecaster:
-    DEBUG=True
+    
     def __init__(self, 
                  path=file_path, 
                  date_col='date', 
@@ -129,7 +132,7 @@ class StockForecaster:
         else:
             # Si c'est un objet Django, on suppose qu'il a une méthode pour récupérer les données
             pass
-        # self.data = data
+        
         return data
     
     # Pretaitement du donnee pour l'entrainement du ou des modeles
@@ -185,6 +188,15 @@ class StockForecaster:
     
     # Separation de données en train, test
     def train_test_split(self,data):
+        """ Sépare les données en ensembles d'entraînement et de test.
+
+        Args:
+            data (_type_): Un Dataframe contenant les données à séparer.
+        test_size (float, optional): Proportion de l'ensemble de données à utiliser pour le test. Defaults to 0.2.
+
+        Returns:
+            _type_: Tuple contenant les ensembles d'entraînement et de test, ainsi que les tailles de validation et de test.
+        """
         test_size=int(len(data)*self.test_size)
         val_size=int(len(data)*self.val_size)
         train_set_with_exog=data.iloc[:-test_size]
@@ -335,6 +347,8 @@ class StockForecaster:
                     steps=self.horizon,
                     exog=exog_future,
                     )
+        print("Les meilleur lags par modele ",self.best_lags)
+        print(forecaster.summary())
         return predictions
     # Evaluation des performances du modèle
     def compute_metrics_per_column(self,y_true, y_pred):
