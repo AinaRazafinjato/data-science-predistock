@@ -42,7 +42,11 @@ class StockForecaster:
     },
     "RegressionLineaire": {
         "alg": LinearRegression(),
-        "params_grid_search": None
+        "params_grid_search": {
+                'fit_intercept': [True, False],
+                'copy_X': [True, False],
+                'positive': [True, False]  
+            }
     },
     "Ridge": {
         "alg": Ridge(alpha=1.0),
@@ -269,7 +273,7 @@ class StockForecaster:
 
                 # # Pour extraire seulement les paramètres
                 # best_params = best_model_info['params']
-                print(best_model_info)
+                
                 # Enregistrement du meilleur params 
                 self.best_params[model_name] = best_model_info['params']
                 self.best_lags[model_name] = best_model_info['lags']
@@ -334,7 +338,6 @@ class StockForecaster:
         # Utilisation du meilleur parametre sur la meilleur modele
         self.best_model.set_params(**self.best_params[self.best_model_name])
         
-        print(performance_df)
         
     def forecast(self):
         """ Effectue une prévision en utilisant le meilleur modèle trouvé lors de la recherche des hyperparamètres.
@@ -370,7 +373,6 @@ class StockForecaster:
                     exog=exog_future,
                     )
         print("Les meilleur lags par modele ",self.best_lags)
-        print(forecaster.summary())
         return predictions
     
     
@@ -389,10 +391,18 @@ class StockForecaster:
         for col in y_true.columns:
             rmse = np.sqrt(mean_squared_error(y_true[col], y_pred[col]))
             mae = mean_absolute_error(y_true[col], y_pred[col])
-            mape = mean_absolute_percentage_error(y_true[col], y_pred[col]) * 100
+            mape = self.safe_mape(y_true[col], y_pred[col]) * 100
             metrics[col] = {'RMSE': rmse, 'MAE': mae, 'MAPE': mape}
         return pd.DataFrame(metrics).T  # transpose for readability
-     
+
+    # Fonction pour calculer le MAPE en évitant la division par zéro
+    def safe_mape(self,y_true, y_pred):
+        y_true, y_pred = np.array(y_true), np.array(y_pred)
+        mask = y_true != 0
+        if not np.any(mask):
+            return np.nan  # ou 0.0 ou autre valeur par défaut
+        return np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask]))
+
     # Exécution de l'ensemble du processus
     def run_all(self):
         """ Exécute l'ensemble du processus de prévision, y compris le chargement des données, le prétraitement, la recherche des hyperparamètres et la prévision.
@@ -401,7 +411,7 @@ class StockForecaster:
         data_processed=self.preprocess(data)
         self.grid_search(data_processed)
         self.find_best_model()
-        print(self.forecast())
+        self.forecast().to_excel("predictions.xlsx")
 
 if __name__=="__main__":
     ex=StockForecaster(
