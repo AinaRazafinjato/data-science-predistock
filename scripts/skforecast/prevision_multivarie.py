@@ -206,6 +206,12 @@ class StockForecaster:
     
     # Faire le grid search pour les modele qui ont des params_grid
     def grid_search(self,data):
+        """Recherche des hyperparamètres optimaux pour les modèles définis dans self.models.
+        Cette méthode effectue une recherche en grille pour chaque modèle qui possède des paramètres de recherche d'hyperparamètres.
+
+        Args:
+            data (_type_): Dataframe après processing contenant les données à utiliser pour la recherche d'hyperparamètres.
+        """
         train_set, test_set, val_size,test_size = self.train_test_split(data)
         for model_name, model in self.models.items():
             print(f"En cours : {model_name}")
@@ -294,6 +300,8 @@ class StockForecaster:
     
     # Recherche du meilleur modele
     def find_best_model(self):
+        """ Trouve le meilleur modèle en fonction des performances calculées lors de la recherche des hyperparamètres.
+        """
         performance_df = pd.DataFrame(self.performance)
         performance_df = performance_df.T
         performance_df.columns = ['RMSE', 'MAE', 'MAPE']
@@ -318,6 +326,9 @@ class StockForecaster:
         
         print(performance_df)
     def forecast(self):
+        """ Effectue une prévision en utilisant le meilleur modèle trouvé lors de la recherche des hyperparamètres.
+        Returns: les predictions futures
+        """
         # Generation du future variable exogene
         future_dates= pd.date_range(start=self.data.index.max() + pd.Timedelta(weeks=1), periods=self.horizon, freq=self.freq)
         exog_future = pd.DataFrame({
@@ -350,8 +361,19 @@ class StockForecaster:
         print("Les meilleur lags par modele ",self.best_lags)
         print(forecaster.summary())
         return predictions
+    
+    
     # Evaluation des performances du modèle
     def compute_metrics_per_column(self,y_true, y_pred):
+        """ Compute metrics for each column in the DataFrame.
+
+        Args:
+            y_true (_type_): Valeur reel du donnée de test 
+            y_pred (_type_): Valeur prédit du donnée de test
+
+        Returns:
+            _type_: DataFrame with RMSE, MAE, and MAPE for each column.
+        """
         metrics = {}
         for col in y_true.columns:
             rmse = np.sqrt(mean_squared_error(y_true[col], y_pred[col]))
@@ -362,13 +384,13 @@ class StockForecaster:
      
     # Exécution de l'ensemble du processus
     def run_all(self):
+        """ Exécute l'ensemble du processus de prévision, y compris le chargement des données, le prétraitement, la recherche des hyperparamètres et la prévision.
+        """
         data=self.load_data()
         data_processed=self.preprocess(data)
         self.grid_search(data_processed)
         self.find_best_model()
         print(self.forecast())
-        return data_processed
-
 
 if __name__=="__main__":
     ex=StockForecaster(
