@@ -23,9 +23,6 @@ from datetime import datetime
 import os
 
 
-# Liste des modèles à comparer
-global models
-
 current_dir = os.path.dirname(os.path.abspath(__file__))
 file_path = os.path.join(current_dir, "..", "..", "data", "raw", "train copy.csv")
 
@@ -86,7 +83,22 @@ class StockForecaster:
                  window_size=4,
                  ):
         """
-        path : chemin du fichier du donnée ou objet Django du donnée
+        Initialisation de la classe StockForecaster.
+        Args:
+            path (str): Chemin vers le fichier CSV ou l'objet Django contenant les données.
+            date_col (str): Nom de la colonne contenant les dates.
+            product_col (str): Nom de la colonne contenant les identifiants des produits.
+            target_col (str): Nom de la colonne cible à prédire.
+            mouvement_type_col (str): Nom de la colonne indiquant le type de mouvement (vente, réapprovisionnement, etc.).
+            mouvemement_type (list): Liste des types de mouvements à considérer pour la prévision.
+            model_name (str): Nom du modèle à utiliser. Si "all", tous les modèles seront utilisés.
+            horizon (int): Nombre de périodes futures à prédire.
+            frequency (str): Fréquence des données temporelles ('D', 'W', 'M', etc.).
+            start_date (datetime, optional): Date de début pour les prévisions. Si None, utilise la date minimale des données.
+            test_size (float): Proportion de l'ensemble de données à utiliser pour le test.
+            val_size (float): Proportion de l'ensemble de données à utiliser pour la validation.
+            lags (int): Nombre maximum de lags à considérer pour les modèles avec des paramètres de recherche d'hyperparamètres.
+            window_size (int): Taille de la fenêtre pour les caractéristiques temporelles.
         """
         self.path=path
         self.data = None
@@ -101,15 +113,14 @@ class StockForecaster:
         self.horizon = horizon
         self.test_size = test_size
         self.val_size = val_size
-        self.lags = 6
-        # self.lags_grid = list(np.arange(start=1,stop=lags))
+        self.lags = lags
         self.lags_grid = {f"{lag} lags": int(lag) for lag in np.arange(start=1,stop=lags)}
         self.window_size = window_size
         self.movement_type = mouvemement_type
-        self.models = models if model_name=="all" else {model_name:models[model_name],}
+        self.models = StockForecaster.models if model_name=="all" else {model_name:StockForecaster.models[model_name],}
         self.best_model = None if model_name=="all" else self.models[model_name]["alg"]
-        self.best_params = {name: {} for name in models}
-        self.best_lags = {name: None for name in models}
+        self.best_params = {name: {} for name in self.models}
+        self.best_lags = {name: None for name in self.models}
         self.weights = {
                     'RMSE': 0.4,
                     'MAE': 0.3,
@@ -137,7 +148,6 @@ class StockForecaster:
     
     # Pretaitement du donnee pour l'entrainement du ou des modeles
     def preprocess(self,data):
-        # Filtrer, encoder, ajouter features temporelles, etc.
         """
         Crée un DataFrame avec full_range en index et chaque colonne = produit-store.
         Les dates manquantes sont remplies avec 0.
@@ -319,12 +329,13 @@ class StockForecaster:
         self.best_model_name = performance_df['score_pondéré'].idxmin()
             
         # Recuperation du meilleur modèle et de ses meilleurs hyperparamètres
-        self.best_model=models[self.best_model_name]['alg']
+        self.best_model=self.models[self.best_model_name]['alg']
         # self.best_params=self.best_params[self.best_model_name]
         # Utilisation du meilleur parametre sur la meilleur modele
         self.best_model.set_params(**self.best_params[self.best_model_name])
         
         print(performance_df)
+        
     def forecast(self):
         """ Effectue une prévision en utilisant le meilleur modèle trouvé lors de la recherche des hyperparamètres.
         Returns: les predictions futures
@@ -395,7 +406,7 @@ class StockForecaster:
 if __name__=="__main__":
     ex=StockForecaster(
                     mouvemement_type=[1,2],
-                    lags=2
+                    lags=5
                     )
     
     ex.run_all()
