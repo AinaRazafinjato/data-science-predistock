@@ -65,7 +65,7 @@ file_path = os.path.join(current_dir, "..", "..", "data", "raw", "train copy.csv
 
 
 class StockForecaster:
-    
+    DEBUG=True
     def __init__(self, 
                  path=file_path, 
                  date_col='date', 
@@ -89,6 +89,7 @@ class StockForecaster:
         self.data = None
         self.freq=frequency
         self.start_date=start_date
+        self.end_date=datetime.now()
         self.date_col = date_col
         self.product_col = product_col
         self.target_col = target_col
@@ -98,12 +99,14 @@ class StockForecaster:
         self.test_size = test_size
         self.val_size = val_size
         self.lags = 6
+        # self.lags_grid = list(np.arange(start=1,stop=lags))
         self.lags_grid = {f"{lag} lags": int(lag) for lag in np.arange(start=1,stop=lags)}
         self.window_size = window_size
         self.movement_type = mouvemement_type
         self.models = models if model_name=="all" else {model_name:models[model_name],}
         self.best_model = None if model_name=="all" else self.models[model_name]["alg"]
         self.best_params = {name: {} for name in models}
+        self.best_lags = {name: None for name in models}
         self.weights = {
                     'RMSE': 0.4,
                     'MAE': 0.3,
@@ -126,6 +129,7 @@ class StockForecaster:
         else:
             # Si c'est un objet Django, on suppose qu'il a une méthode pour récupérer les données
             pass
+        # self.data = data
         return data
     
     # Pretaitement du donnee pour l'entrainement du ou des modeles
@@ -161,10 +165,8 @@ class StockForecaster:
         # Reindex sur full_range
         full_range_date = pd.date_range(
                             start=self.start_date if self.start_date!=None else data.index.min(), 
-                            end=data.index.max(), 
-                            # end=datetime.now(), 
+                            end=data.index.max() if StockForecaster.DEBUG else self.end_date, 
                             freq="D")
-        
         pivot_data = pivot_data.reindex(full_range_date)
 
         # Remplir les valeurs manquantes avec 0
@@ -178,6 +180,7 @@ class StockForecaster:
         df["month"]= df.index.month
         df["quarter"]= df.index.quarter
         
+        self.data=df
         return df
     
     # Separation de données en train, test
@@ -236,17 +239,16 @@ class StockForecaster:
                 # La ligne avec la meilleure combinaison d'hyperparamètres
                 best_model_info = grid_search.iloc[0]  
 
-                # Pour extraire seulement les paramètres
-                best_params = best_model_info['params']
-                
+                # # Pour extraire seulement les paramètres
+                # best_params = best_model_info['params']
+                print(best_model_info)
                 # Enregistrement du meilleur params 
-                self.best_params[model_name] = best_params
+                self.best_params[model_name] = best_model_info['params']
+                self.best_lags[model_name] = best_model_info['lags']
                 
-                print(f"Meilleurs paramètres pour {model_name}: {best_params}")
                 
                 # Mise à jour du modèle avec les meilleurs paramètres
-                forecaster.regressor.set_params(**best_params)
-
+                forecaster.regressor.set_params(**self.best_params[model_name])
             else:
                 # Entrainnement sur l'ensemble du train_set et val_set 
                 forecaster.fit(
@@ -290,7 +292,9 @@ class StockForecaster:
             performance_df['MAE'] * self.weights['MAE'] +
             performance_df['MAPE'] * self.weights['MAPE']
         )
-
+        # Affichage des performances
+        print("Performances des modèles :")
+        print(performance_df[['RMSE', 'MAE', 'MAPE', 'score_pondéré']])
         # Tri pour trouver le meilleur modèle
         self.best_model_name = performance_df['score_pondéré'].idxmin()
             
@@ -301,7 +305,37 @@ class StockForecaster:
         self.best_model.set_params(**self.best_params[self.best_model_name])
         
         print(performance_df)
-    
+    def forecast(self):
+        # Generation du future variable exogene
+        future_dates= pd.date_range(start=self.data.index.max() + pd.Timedelta(weeks=1), periods=self.horizon, freq=self.freq)
+        exog_future = pd.DataFrame({
+            "year": future_dates.year,
+            "month": future_dates.month,
+            "quarter": future_dates.quarter
+        },index=future_dates)
+        
+        # Initialisation du meilleur modèle
+        forecaster = ForecasterRecursiveMultiSeries(
+                        window_features=RollingFeatures(stats=['mean'], window_sizes=self.window_size),
+                        regressor = self.best_model,
+                        lags      = self.best_lags[self.best_model_name],
+                        encoding  = 'ordinal',
+                        transformer_series=StandardScaler(),
+                        transformer_exog=StandardScaler(),    
+                        )
+        
+        forecaster.fit(
+                    series=self.data.drop(columns=self.exog_col),
+                    store_in_sample_residuals=True,
+                    exog=self.data[self.exog_col],
+                    )
+        
+        # Prediction future
+        predictions = forecaster.predict_interval(
+                    steps=self.horizon,
+                    exog=exog_future,
+                    )
+        return predictions
     # Evaluation des performances du modèle
     def compute_metrics_per_column(self,y_true, y_pred):
         metrics = {}
@@ -318,12 +352,14 @@ class StockForecaster:
         data_processed=self.preprocess(data)
         self.grid_search(data_processed)
         self.find_best_model()
+        print(self.forecast())
         return data_processed
 
 
 if __name__=="__main__":
     ex=StockForecaster(
                     mouvemement_type=[1,2],
+                    lags=2
                     )
     
     ex.run_all()
