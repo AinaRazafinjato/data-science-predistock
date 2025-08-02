@@ -1,0 +1,26 @@
+Voici ce que je remarque :
+
+Proportion export/import :
+L’export représente ~70 % des mouvements, l’import ~25 %.
+Dans une gestion de stock réelle, on importe d’abord pour alimenter le stock, puis on exporte/vend.
+Ici, le ratio est déséquilibré : il devrait être plus proche de 50/50 ou l’import légèrement supérieur à l’export (pour éviter les ruptures).
+
+Séquence des mouvements :
+On observe des exports alors que le stock est parfois faible ou nul, ce qui n’est pas réaliste.
+L’import devrait précéder l’export, surtout après une rupture ou un stock bas.
+
+Stock cumulé :
+Le stock cumulé devient négatif dans plusieurs lignes, ce qui est impossible dans la réalité (on ne peut pas vendre ce qu’on n’a pas).
+
+Ajustements :
+Les ajustements sont rares, ce qui est cohérent, mais ils devraient parfois corriger des erreurs ou des inventaires.
+
+Partenaires :
+Les partenaires sont variés et cycliques, ce qui est réaliste.
+
+Conclusion :
+Le dataset est proche d’un dataset réel, mais il y a deux points à corriger pour plus de réalisme :
+
+L’import doit toujours précéder l’export (jamais d’export si le stock est insuffisant).
+Le stock cumulé ne doit jamais être négatif.
+Ces ajustements rendront la simulation plus fidèle à la réalité d’un entrepôt ou d’un commerce.

@@ -1,0 +1,7 @@
+Objectif : Une dataset fictif qui ressemble au reel
+
+On ajuste au mieux la fonction de generation de dataset :
+
+* Date de peremption inclus
+* Repetition de la tendance par annee 
+
