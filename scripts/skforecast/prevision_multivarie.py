@@ -23,9 +23,16 @@ from datetime import datetime
 import os
 
 
-# Liste des modèles à comparer
-global models
-models = {
+current_dir = os.path.dirname(os.path.abspath(__file__))
+file_path = os.path.join(current_dir, "..", "..", "data", "raw", "train copy.csv")
+
+
+
+class StockForecaster:
+    DEBUG=True
+    # DEBUG = True  # Pour activer le mode debug, sinon False
+    # Dictionnaire des modèles avec leurs paramètres
+    models = {
     'XGBoost': {
         "alg": xgb.XGBRegressor(objective='reg:squarederror', verbosity=0),
         "params_grid_search": {
@@ -35,7 +42,11 @@ models = {
     },
     "RegressionLineaire": {
         "alg": LinearRegression(),
-        "params_grid_search": None
+        "params_grid_search": {
+                'fit_intercept': [True, False],
+                'copy_X': [True, False],
+                'positive': [True, False]  
+            }
     },
     "Ridge": {
         "alg": Ridge(alpha=1.0),
@@ -58,13 +69,6 @@ models = {
     #     }
     # }
 }
-
-current_dir = os.path.dirname(os.path.abspath(__file__))
-file_path = os.path.join(current_dir, "..", "..", "data", "raw", "train copy.csv")
-
-
-
-class StockForecaster:
     
     def __init__(self, 
                  path=file_path, 
@@ -74,21 +78,37 @@ class StockForecaster:
                  mouvement_type_col='movement_type',
                  mouvemement_type=["sale","restock"],
                  model_name="all",
-                 horizon=12,
-                 frequency='M',
+                 horizon=24,
+                 frequency='W',
                  start_date=None,
                  test_size=0.2,
                  val_size=0.2,
-                 lags=12,
-                 window_size=12,
+                 lags=30,
+                 window_size=4,
                  ):
         """
-        path : chemin du fichier du donnée ou objet Django du donnée
+        Initialisation de la classe StockForecaster.
+        Args:
+            path (str): Chemin vers le fichier CSV ou l'objet Django contenant les données.
+            date_col (str): Nom de la colonne contenant les dates.
+            product_col (str): Nom de la colonne contenant les identifiants des produits.
+            target_col (str): Nom de la colonne cible à prédire.
+            mouvement_type_col (str): Nom de la colonne indiquant le type de mouvement (vente, réapprovisionnement, etc.).
+            mouvemement_type (list): Liste des types de mouvements à considérer pour la prévision.
+            model_name (str): Nom du modèle à utiliser. Si "all", tous les modèles seront utilisés.
+            horizon (int): Nombre de périodes futures à prédire.
+            frequency (str): Fréquence des données temporelles ('D', 'W', 'M', etc.).
+            start_date (datetime, optional): Date de début pour les prévisions. Si None, utilise la date minimale des données.
+            test_size (float): Proportion de l'ensemble de données à utiliser pour le test.
+            val_size (float): Proportion de l'ensemble de données à utiliser pour la validation.
+            lags (int): Nombre maximum de lags à considérer pour les modèles avec des paramètres de recherche d'hyperparamètres.
+            window_size (int): Taille de la fenêtre pour les caractéristiques temporelles.
         """
         self.path=path
         self.data = None
         self.freq=frequency
         self.start_date=start_date
+        self.end_date=datetime.now()
         self.date_col = date_col
         self.product_col = product_col
         self.target_col = target_col
@@ -98,11 +118,13 @@ class StockForecaster:
         self.test_size = test_size
         self.val_size = val_size
         self.lags = lags
+        self.lags_grid = {f"{lag} lags": int(lag) for lag in np.arange(start=1,stop=lags)}
         self.window_size = window_size
         self.movement_type = mouvemement_type
-        self.models = models if model_name=="all" else {model_name:models[model_name],}
-        self.best_model = None if model_name=="all" else self.models["alg"]
-        self.best_params = {name: {} for name in models}
+        self.models = StockForecaster.models if model_name=="all" else {model_name:StockForecaster.models[model_name],}
+        self.best_model = None if model_name=="all" else self.models[model_name]["alg"]
+        self.best_params = {name: {} for name in self.models}
+        self.best_lags = {name: None for name in self.models}
         self.weights = {
                     'RMSE': 0.4,
                     'MAE': 0.3,
@@ -125,11 +147,11 @@ class StockForecaster:
         else:
             # Si c'est un objet Django, on suppose qu'il a une méthode pour récupérer les données
             pass
+        
         return data
     
     # Pretaitement du donnee pour l'entrainement du ou des modeles
     def preprocess(self,data):
-        # Filtrer, encoder, ajouter features temporelles, etc.
         """
         Crée un DataFrame avec full_range en index et chaque colonne = produit-store.
         Les dates manquantes sont remplies avec 0.
@@ -160,10 +182,8 @@ class StockForecaster:
         # Reindex sur full_range
         full_range_date = pd.date_range(
                             start=self.start_date if self.start_date!=None else data.index.min(), 
-                            end=data.index.max(), 
-                            # end=datetime.now(), 
+                            end=data.index.max() if StockForecaster.DEBUG else self.end_date, 
                             freq="D")
-        
         pivot_data = pivot_data.reindex(full_range_date)
 
         # Remplir les valeurs manquantes avec 0
@@ -177,10 +197,20 @@ class StockForecaster:
         df["month"]= df.index.month
         df["quarter"]= df.index.quarter
         
+        self.data=df
         return df
     
     # Separation de données en train, test
     def train_test_split(self,data):
+        """ Sépare les données en ensembles d'entraînement et de test.
+
+        Args:
+            data (_type_): Un Dataframe contenant les données à séparer.
+        test_size (float, optional): Proportion de l'ensemble de données à utiliser pour le test. Defaults to 0.2.
+
+        Returns:
+            _type_: Tuple contenant les ensembles d'entraînement et de test, ainsi que les tailles de validation et de test.
+        """
         test_size=int(len(data)*self.test_size)
         val_size=int(len(data)*self.val_size)
         train_set_with_exog=data.iloc[:-test_size]
@@ -190,11 +220,17 @@ class StockForecaster:
     
     # Faire le grid search pour les modele qui ont des params_grid
     def grid_search(self,data):
+        """Recherche des hyperparamètres optimaux pour les modèles définis dans self.models.
+        Cette méthode effectue une recherche en grille pour chaque modèle qui possède des paramètres de recherche d'hyperparamètres.
+
+        Args:
+            data (_type_): Dataframe après processing contenant les données à utiliser pour la recherche d'hyperparamètres.
+        """
         train_set, test_set, val_size,test_size = self.train_test_split(data)
         for model_name, model in self.models.items():
             print(f"En cours : {model_name}")
             
-            # Initialisation du modèle
+            # Initialisation du modèle avec le forecaster
             forecaster = ForecasterRecursiveMultiSeries(
                             regressor = model["alg"],
                             lags      = self.lags,
@@ -223,7 +259,7 @@ class StockForecaster:
                             forecaster       = forecaster,
                             series           = train_set.drop(columns=self.exog_col),
                             exog             = train_set[self.exog_col],
-                            # lags_grid        = LAG_SIZE,
+                            lags_grid        = self.lags_grid,
                             param_grid       = model["params_grid_search"],
                             cv               = cv,
                             levels           = levels.tolist(),
@@ -235,26 +271,25 @@ class StockForecaster:
                 # La ligne avec la meilleure combinaison d'hyperparamètres
                 best_model_info = grid_search.iloc[0]  
 
-                # Pour extraire seulement les paramètres
-                best_params = best_model_info['params']
+                # # Pour extraire seulement les paramètres
+                # best_params = best_model_info['params']
                 
                 # Enregistrement du meilleur params 
-                self.best_params[model_name] = best_params
+                self.best_params[model_name] = best_model_info['params']
+                self.best_lags[model_name] = best_model_info['lags']
                 
-                print(f"Meilleurs paramètres pour {model_name}: {best_params}")
                 
                 # Mise à jour du modèle avec les meilleurs paramètres
-                forecaster.regressor.set_params(**best_params)
-
-            
-            # Entrainnement sur l'ensemble du train_set et val_set 
-            forecaster.fit(
-                        series=train_set.drop(columns=self.exog_col),
-                        store_in_sample_residuals=True,
-                        exog=train_set[self.exog_col],
-                        
-                        )
-                
+                forecaster.regressor.set_params(**self.best_params[model_name])
+            else:
+                # Entrainnement sur l'ensemble du train_set et val_set 
+                forecaster.fit(
+                            series=train_set.drop(columns=self.exog_col),
+                            store_in_sample_residuals=True,
+                            exog=train_set[self.exog_col],
+                            
+                            )
+                    
             # Prediction sur le test set
             predictions = forecaster.predict(
                         steps=test_size,
@@ -270,7 +305,7 @@ class StockForecaster:
                         )
             
             # Calcul des performances
-            metrics_df = self.compute_metrics_per_column(test_set.drop(self.exog_col), predictions)
+            metrics_df = self.compute_metrics_per_column(test_set.drop(columns=self.exog_col), predictions)
             
             # Enregistrement des performances
             self.performance[model_name]["rmse"]=np.mean(metrics_df['RMSE'])
@@ -279,6 +314,8 @@ class StockForecaster:
     
     # Recherche du meilleur modele
     def find_best_model(self):
+        """ Trouve le meilleur modèle en fonction des performances calculées lors de la recherche des hyperparamètres.
+        """
         performance_df = pd.DataFrame(self.performance)
         performance_df = performance_df.T
         performance_df.columns = ['RMSE', 'MAE', 'MAPE']
@@ -289,47 +326,97 @@ class StockForecaster:
             performance_df['MAE'] * self.weights['MAE'] +
             performance_df['MAPE'] * self.weights['MAPE']
         )
-
+        # Affichage des performances
+        print("Performances des modèles :")
+        print(performance_df[['RMSE', 'MAE', 'MAPE', 'score_pondéré']])
         # Tri pour trouver le meilleur modèle
         self.best_model_name = performance_df['score_pondéré'].idxmin()
             
         # Recuperation du meilleur modèle et de ses meilleurs hyperparamètres
-        best_model=models[best_model_name]['alg']
-        best_params=self.best_parameters[best_model_name]
+        self.best_model=self.models[self.best_model_name]['alg']
+        # self.best_params=self.best_params[self.best_model_name]
         # Utilisation du meilleur parametre sur la meilleur modele
-        best_model.set_params(**best_params)
-    # Recuperation du modele a utilisee
-    def get_model(self):
-        return self.models
+        self.best_model.set_params(**self.best_params[self.best_model_name])
         
-    def train(self):
-        pass
         
-    def predict(self, future_data):
-        pass
+    def forecast(self):
+        """ Effectue une prévision en utilisant le meilleur modèle trouvé lors de la recherche des hyperparamètres.
+        Returns: les predictions futures
+        """
+        # Generation du future variable exogene
+        future_dates= pd.date_range(start=self.data.index.max() + pd.Timedelta(weeks=1), periods=self.horizon, freq=self.freq)
+        exog_future = pd.DataFrame({
+            "year": future_dates.year,
+            "month": future_dates.month,
+            "quarter": future_dates.quarter
+        },index=future_dates)
+        
+        # Initialisation du meilleur modèle
+        forecaster = ForecasterRecursiveMultiSeries(
+                        window_features=RollingFeatures(stats=['mean'], window_sizes=self.window_size),
+                        regressor = self.best_model,
+                        lags      = self.best_lags[self.best_model_name],
+                        encoding  = 'ordinal',
+                        transformer_series=StandardScaler(),
+                        transformer_exog=StandardScaler(),    
+                        )
+        
+        forecaster.fit(
+                    series=self.data.drop(columns=self.exog_col),
+                    store_in_sample_residuals=True,
+                    exog=self.data[self.exog_col],
+                    )
+        
+        # Prediction future
+        predictions = forecaster.predict_interval(
+                    steps=self.horizon,
+                    exog=exog_future,
+                    )
+        print("Les meilleur lags par modele ",self.best_lags)
+        return predictions
+    
     
     # Evaluation des performances du modèle
     def compute_metrics_per_column(self,y_true, y_pred):
+        """ Compute metrics for each column in the DataFrame.
+
+        Args:
+            y_true (_type_): Valeur reel du donnée de test 
+            y_pred (_type_): Valeur prédit du donnée de test
+
+        Returns:
+            _type_: DataFrame with RMSE, MAE, and MAPE for each column.
+        """
         metrics = {}
         for col in y_true.columns:
             rmse = np.sqrt(mean_squared_error(y_true[col], y_pred[col]))
             mae = mean_absolute_error(y_true[col], y_pred[col])
-            mape = mean_absolute_percentage_error(y_true[col], y_pred[col]) * 100
+            mape = self.safe_mape(y_true[col], y_pred[col]) * 100
             metrics[col] = {'RMSE': rmse, 'MAE': mae, 'MAPE': mape}
         return pd.DataFrame(metrics).T  # transpose for readability
-     
+
+    # Fonction pour calculer le MAPE en évitant la division par zéro
+    def safe_mape(self,y_true, y_pred):
+        y_true, y_pred = np.array(y_true), np.array(y_pred)
+        mask = y_true != 0
+        if not np.any(mask):
+            return np.nan  # ou 0.0 ou autre valeur par défaut
+        return np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask]))
+
     # Exécution de l'ensemble du processus
     def run_all(self):
+        """ Exécute l'ensemble du processus de prévision, y compris le chargement des données, le prétraitement, la recherche des hyperparamètres et la prévision.
+        """
         data=self.load_data()
         data_processed=self.preprocess(data)
         self.grid_search(data_processed)
-        return data_processed
-
+        self.find_best_model()
+        self.forecast().to_excel("predictions.xlsx")
 
 if __name__=="__main__":
     ex=StockForecaster(
-                    model_name="Ridge",
                     mouvemement_type=[1,2],
+                    lags=5
                     )
     
-    print(ex.run_all().head())
+    ex.run_all()
