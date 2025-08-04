@@ -177,7 +177,7 @@ class StockForecaster:
             columns="product_mouvement",
             values=self.target_col,  # <-- à adapter si ta colonne s'appelle différemment
             aggfunc='sum'
-        )
+        ).fillna(0)
 
         # Reindex sur full_range
         full_range_date = pd.date_range(
