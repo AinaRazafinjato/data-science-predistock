@@ -1,15 +1,31 @@
-# Prediction of all products quantity (import/export)
+# Notebook suggéré : model_comparison_study.ipynb
 
-Situation	                        Modèle recommandé
-Prédire quantité au fil du temps	Prophet, ARIMA
-Tester modèle simple	            Ridge Regression (Done)
-Relations non-linéaires complexes	SVR, Random Forest
-Beaucoup de données	                Random Forest, Boosting
+# 1. Import et configuration
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.svm import SVR
+from prophet import Prophet
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-# Ma recommandation :
-Commence avec Prophet (pour chaque produit individuellement), puis compare avec Ridge Regression et Random Forest.
+# 2. Chargement des données (votre dataset)
+data = pd.read_csv("votre_fichier.csv")
 
-# Exemple de workflow
-1. Prépare les données (un fichier par produit : date, quantité).
-2. Teste Prophet pour chaque produit.
-3. Compare les résultats (erreur de prédiction) avec Ridge ou Random Forest.
+# 3. Étude RandomForest
+## - Importance des features
+## - Impact des hyperparamètres (n_estimators, max_depth, etc.)
+## - Visualisation des arbres
+
+# 4. Étude SVR  
+## - Comparaison des kernels (rbf, linear, poly)
+## - Sensibilité aux paramètres C, gamma, epsilon
+## - Scaling des données
+
+# 5. Étude Prophet
+## - Détection automatique de saisonnalité
+## - Gestion des jours fériés
+## - Intervalles de confiance
+
+# 6. Comparaison performance sur vos données
