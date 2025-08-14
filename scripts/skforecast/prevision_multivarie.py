@@ -146,8 +146,7 @@ class StockForecaster:
         else:
             # Si c'est un objet Django, on suppose qu'il a une méthode pour récupérer les données
             data=pd.DataFrame(self.path)
-            pass
-        
+            data.set_index("date",inplace=True)        
         return data
     
     # Pretaitement du donnee pour l'entrainement du ou des modeles
@@ -383,7 +382,6 @@ class StockForecaster:
         #     Person.objects.bulk_create(persons)
 
         return predictions
-    
     
     # Evaluation des performances du modèle
     def compute_metrics_per_column(self,y_true, y_pred):
