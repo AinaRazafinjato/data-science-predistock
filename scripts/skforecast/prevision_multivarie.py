@@ -1,5 +1,4 @@
 # Libraries
-# ==============================================================================
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -146,6 +145,7 @@ class StockForecaster:
             data = data.sort_values(by=[self.product_col, self.movement_type_col])
         else:
             # Si c'est un objet Django, on suppose qu'il a une méthode pour récupérer les données
+            data=pd.DataFrame(self.path)
             pass
         
         return data
@@ -175,7 +175,7 @@ class StockForecaster:
         pivot_data = data.pivot_table(
             index=self.date_col,
             columns="product_mouvement",
-            values=self.target_col,  # <-- à adapter si ta colonne s'appelle différemment
+            values=self.target_col,  
             aggfunc='sum'
         )
 
@@ -373,6 +373,15 @@ class StockForecaster:
                     exog=exog_future,
                     )
         print("Les meilleur lags par modele ",self.best_lags)
+        
+        # if not StockForecaster.DEBUG:
+        #     fields = ['name', 'age', 'email']
+        #     persons = [
+        #         Person(**{field: row[field] for field in fields})
+        #         for _, row in df.iterrows()
+        #     ]
+        #     Person.objects.bulk_create(persons)
+
         return predictions
     
     
